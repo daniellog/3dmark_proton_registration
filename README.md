@@ -1,6 +1,25 @@
 # 3DMark Proton Registration & Configuration
 
-Automated CLI tool to configure 3DMark (Steam AppIDs `223850` / `231350`) on Linux under Proton and inject the paid Steam CD/registration key directly into the Wine prefix registry.
+Automated CLI tooling to run paid 3DMark (Steam AppID `223850`) properly under Proton on
+Linux: install the game through Steam if needed, inject the paid CD/registration key into the
+Wine prefix registry, and patch the launcher so Time Spy / Night Raid stop claiming the CPU
+lacks SSSE3.
+
+## Quick start
+
+```bash
+# Everything in one go: download 3DMark if missing, register the key, patch the launcher
+./setup_3dmark.sh --install --from-steam
+
+# Already installed and just want the key + Time Spy/Night Raid unlock
+./setup_3dmark.sh --from-steam
+
+# Standalone launcher patch (idempotent, revertible)
+./patch_3dmark_compat.sh
+```
+
+Launch 3DMark once after a fresh install so Proton creates the prefix, then run the script
+again; it detects the prefix automatically.
 
 ---
 
@@ -45,13 +64,15 @@ So extraction is a **clipboard bridge**: the script opens Steam's CD keys dialog
 - **Secrets hygiene**: Keys are masked in output unless `--show-key` is passed.
 - **Includes Known Proton Fixes**: Documents launch parameter workarounds (`--use-gl=osmesa`) and DirectX shader compiler requirements (`d3dcompiler_43`, `d3dcompiler_47`).
 - **Time Spy / Night Raid unlocker**: `patch_3dmark_compat.sh` removes the launcher's bogus SSSE3 compatibility gate (SystemInfo cannot report CPU instruction sets under Wine) with a byte-identical, revertible backup.
+- **Steam install handling**: discovers every Steam library (native, Flatpak, `libraryfolders.vdf`, `/mnt` and `/media`), and with `--install` requests AppID `223850` through the Steam client and waits for the download before patching.
 
 ---
 
 ## Prerequisites
-1. Install 3DMark via Steam.
+1. Install 3DMark via Steam — or let the script do it with `--install`.
 2. Launch 3DMark at least once through Proton so Steam generates the Wine prefix (`compatdata/223850/pfx`).
 3. Own the paid edition. The key is visible in Steam under **3DMark -> Manage -> CD keys**.
+4. `python3` (only for the launcher patch; the key-injection path is pure bash).
 
 Real Steam keys are shaped like `3DM-ICF-#####-#####-#####-#####` (5-character groups); older keys use 4-character groups. The script accepts 4-6 character groups.
 
@@ -60,6 +81,15 @@ On Wayland install `wl-clipboard` (`wl-paste`); on X11 install `xclip` or `xsel`
 ---
 
 ## Usage
+
+### 0. Full setup, including the download
+
+```bash
+./setup_3dmark.sh --install --from-steam
+```
+`--install` makes Steam download AppID `223850` when it is missing (waiting up to
+`--install-timeout`, default 3600 s) and then applies the launcher patch. Without
+`--install` the script only works with an existing installation and says so.
 
 ### 1. Extract the key from Steam (recommended)
 ```bash
@@ -226,6 +256,16 @@ Notes:
 
 ---
 
+## Repository layout
+
+| Path | Purpose |
+| :--- | :--- |
+| `setup_3dmark.sh` | Registry key registration + Steam install/patch orchestration |
+| `patch_3dmark_compat.sh` | Launcher patch for Time Spy / Night Raid (`--install`, `--check`, `--revert`) |
+| `test_setup.sh` | Registry/prefix/install test suite |
+| `test_patch_compat.sh` | Launcher-patch test suite |
+| `fixtures/make_choros_fixture.py` | Synthetic `choros.jar` used by the patch tests |
+
 ## Verification / Running Tests
 
 Registry/prefix handling (no game installation required):
@@ -233,7 +273,8 @@ Registry/prefix handling (no game installation required):
 ./test_setup.sh
 ```
 
-Launcher patch (builds a synthetic `choros.jar`, no game installation required):
+Launcher patch and Steam install handling (builds a synthetic `choros.jar` and a stub Steam
+client, no game installation required):
 ```bash
 ./test_patch_compat.sh
 ```
