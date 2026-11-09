@@ -17,6 +17,10 @@ done
 export PATH="$STUB_BIN:$PATH"
 unset WAYLAND_DISPLAY DISPLAY
 
+# Keep the compat-patch tests away from a real 3DMark installation
+export DANLAN_3DMARK_STEAM_ROOTS="$TMP_DIR/no-steam-lib"
+mkdir -p "$DANLAN_3DMARK_STEAM_ROOTS"
+
 UL='Software\\UL\\3DMark'
 FM='Software\\Futuremark\\3DMark'
 
@@ -62,7 +66,14 @@ reg_count() {
     END { print n + 0 }' "$1"
 }
 
-run() { "$SETUP" "$@" 2>&1; }
+# Default: skip the launcher patch so registry tests stay isolated
+run() { "$SETUP" --no-compat-patch "$@" 2>&1; }
+run_full() { "$SETUP" "$@" 2>&1; }
+
+new_fixture_game() {
+  mkdir -p "$1/bin/x64"
+  python3 "$SCRIPT_DIR/fixtures/make_choros_fixture.py" "$1/bin/x64/choros.jar"
+}
 
 # ---------------------------------------------------------------------------
 # Test 1: insert into both sections on a fresh prefix
@@ -243,5 +254,54 @@ out=$(PATH="$CLIP_STUB:$PATH" WAYLAND_DISPLAY=wayland-1 "$SETUP" -p "$P" --clipb
 [[ "$(reg_get "$P/user.reg" "$UL" KeyCode)" == "$KEY5" ]] || fail "18: clipboard key not applied"
 [[ "$out" != *"$KEY5"* ]] || fail "18: clipboard key not masked"
 pass "18: --clipboard parses key out of surrounding text"
+
+# ---------------------------------------------------------------------------
+# Test 19: registered run also applies the Time Spy/Night Raid launcher patch
+# ---------------------------------------------------------------------------
+G="$TMP_DIR/game19"; new_fixture_game "$G"
+P="$TMP_DIR/t19"; new_prefix "$P"
+run_full -p "$P" -k "$KEY1" --game-dir "$G" >/dev/null
+[[ "$(reg_get "$P/user.reg" "$UL" KeyCode)" == "$KEY1" ]] || fail "19: key not written"
+[[ -f "$G/bin/x64/choros.jar.orig" ]] || fail "19: compat patch was not applied"
+cmp -s "$G/bin/x64/choros.jar" "$G/bin/x64/choros.jar.orig" && fail "19: jar left pristine"
+pass "19: setup applies the compat patch alongside key registration"
+
+# ---------------------------------------------------------------------------
+# Test 20: --no-compat-patch leaves the game files untouched
+# ---------------------------------------------------------------------------
+G2="$TMP_DIR/game20"; new_fixture_game "$G2"
+P="$TMP_DIR/t20"; new_prefix "$P"
+sum_before=$(sha256sum "$G2/bin/x64/choros.jar" | cut -d' ' -f1)
+run_full -p "$P" -k "$KEY1" --game-dir "$G2" --no-compat-patch >/dev/null
+[[ "$(reg_get "$P/user.reg" "$UL" KeyCode)" == "$KEY1" ]] || fail "20: key not written"
+[[ ! -f "$G2/bin/x64/choros.jar.orig" ]] || fail "20: --no-compat-patch created a backup"
+[[ "$(sha256sum "$G2/bin/x64/choros.jar" | cut -d' ' -f1)" == "$sum_before" ]] \
+  || fail "20: --no-compat-patch modified the jar"
+pass "20: --no-compat-patch skips the launcher patch"
+
+# ---------------------------------------------------------------------------
+# Test 21: --install downloads the game through Steam, then patches it
+# ---------------------------------------------------------------------------
+LIB="$TMP_DIR/lib21"; mkdir -p "$LIB" "$TMP_DIR/bin21"
+cat > "$TMP_DIR/bin21/steam" <<EOF
+#!/bin/sh
+case "\$1" in
+  steam://install/223850) ;;
+  *) exit 1 ;;
+esac
+d="$LIB/steamapps/common/3DMark/bin/x64"
+mkdir -p "\$d"
+cp "$TMP_DIR/choros-fixture.jar" "\$d/choros.jar"
+EOF
+chmod +x "$TMP_DIR/bin21/steam"
+python3 "$SCRIPT_DIR/fixtures/make_choros_fixture.py" "$TMP_DIR/choros-fixture.jar"
+P="$TMP_DIR/t21"; new_prefix "$P"
+out=$(DANLAN_3DMARK_STEAM_ROOTS="$LIB" PATH="$TMP_DIR/bin21:$PATH" \
+      run_full -p "$P" -k "$KEY1" --install --install-timeout 30 2>&1)
+[[ "$(reg_get "$P/user.reg" "$UL" KeyCode)" == "$KEY1" ]] || fail "21: key not written"
+[[ -f "$LIB/steamapps/common/3DMark/bin/x64/choros.jar.orig" ]] \
+  || fail "21: downloaded install was not patched"
+case "$out" in *"3DMark (AppID 223850) is not installed"*) ;; *) fail "21: install was not requested";; esac
+pass "21: --install downloads via Steam and patches the result"
 
 echo "All tests passed successfully."

@@ -132,16 +132,24 @@ Show detected prefixes and planned writes without touching files:
 | `--section ul\|futuremark\|both` | Registry sections to write (default `both`) |
 | `--timespy-key K` | Also write `TimeSpyKeyCode` (UL section) |
 | `--portroyal-key K` | Also write `PortRoyalKeyCode` (UL section) |
+| `--install` | Ensure 3DMark is installed; if missing, request AppID `223850` from Steam and wait for the download |
+| `--install-timeout SECONDS` | Maximum wait for that download (default `3600`) |
+| `--game-dir PATH` | Explicit 3DMark install directory for the compatibility patch |
+| `--no-compat-patch` | Skip the Time Spy/Night Raid launcher patch |
 | `--show-key` | Do not mask the key in logs |
 | `--dry-run` | Show actions without modifying files |
 | `-h, --help` | Show help |
+
+The Time Spy / Night Raid compatibility patch is applied automatically (see
+[issue 4](#4-your-cpu-does-not-support-ssse-3-time-spy-night-raid)); pass
+`--no-compat-patch` to keep the launcher untouched.
 
 ### Exit codes
 | Code | Meaning |
 | :--- | :--- |
 | `0` | Success or already registered / nothing to do |
 | `1` | Invalid option or value |
-| `2` | No 3DMark Proton prefix found |
+| `2` | No 3DMark Proton prefix found (launch the game once after installing) |
 | `3` | Registry verification failed after writing |
 | `4` | No usable key (`STEAM-ENTITLEMENT`, timeout, invalid key) |
 
@@ -190,10 +198,16 @@ they only hide/display the tests, the compatibility gate still blocks them.
 problem (the CPU really can run the tests):
 
 ```bash
-./patch_3dmark_compat.sh            # patch (idempotent)
-./patch_3dmark_compat.sh --dry-run  # just show what would happen
-./patch_3dmark_compat.sh --revert   # restore the pristine launcher
+./patch_3dmark_compat.sh              # patch (idempotent)
+./patch_3dmark_compat.sh --install    # download via Steam first if 3DMark is missing
+./patch_3dmark_compat.sh --check      # exit 0 if installed, 3 otherwise
+./patch_3dmark_compat.sh --dry-run    # just show what would happen
+./patch_3dmark_compat.sh --revert     # restore the pristine launcher
 ```
+
+`setup_3dmark.sh` runs this automatically after detecting the prefix; add `--install` to the
+key-registration command and it also downloads 3DMark through Steam (`steam://install/223850`)
+and waits for the download before patching.
 
 The script backs up the stock launcher to `bin/x64/choros.jar.orig`, then rewrites only
 `com/futuremark/choros/service/ProductStateServiceImpl.class`, replacing
@@ -204,6 +218,8 @@ libraries.
 Notes:
 - Steam's "Verify integrity of game files" (or any game update) will restore the stock jar;
   just rerun the script afterwards.
+- Install-related exit codes: `3` = 3DMark not installed (use `--install`), `6` = no usable
+  Steam client or the download timed out.
 - This is an unsupported client-side workaround. UL treats native Linux/Proton as
   unsupported, so online result validation may still fail even though the benchmark runs and
   scores locally.

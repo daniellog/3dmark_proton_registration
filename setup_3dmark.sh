@@ -48,6 +48,12 @@ Options:
       --open-cdkeys     Just open Steam's CD keys dialog for 3DMark and exit.
   -p, --prefix PATH     Explicit compatdata prefix path (contains pfx/)
   -a, --appid ID        Target AppID (default: auto-detect 223850 or 231350)
+      --install         Make sure 3DMark is installed: if Steam does not have
+                        it, request AppID 223850 and wait for the download
+      --install-timeout SECONDS
+                        Maximum time to wait for that download (default: 3600)
+      --game-dir PATH   Explicit 3DMark install directory for the compat patch
+      --no-compat-patch Do not apply the Time Spy/Night Raid launcher patch
       --section WHICH   Registry section to write: ul, futuremark, or both
                         (default: both)
       --timespy-key K   Also write TimeSpyKeyCode (3DM-SPY-...), UL section
@@ -74,6 +80,10 @@ FROM_STEAM=0
 READ_CLIPBOARD=0
 WAIT_SECS=120
 OPEN_CDKEYS_ONLY=0
+INSTALL=0
+INSTALL_TIMEOUT=""
+GAME_DIR=""
+COMPAT_PATCH=1
 TIMESPY_KEY=""
 PORTROYAL_KEY=""
 SHOW_KEY=0
@@ -97,6 +107,10 @@ while [[ $# -gt 0 ]]; do
     --open-cdkeys) OPEN_CDKEYS_ONLY=1; shift ;;
     -p|--prefix) need_value "$@"; PREFIX="$2"; shift 2 ;;
     -a|--appid) need_value "$@"; TARGET_APPID="$2"; shift 2 ;;
+    --install) INSTALL=1; shift ;;
+    --install-timeout) need_value "$@"; INSTALL_TIMEOUT="$2"; shift 2 ;;
+    --game-dir) need_value "$@"; GAME_DIR="$2"; shift 2 ;;
+    --no-compat-patch) COMPAT_PATCH=0; shift ;;
     --section) need_value "$@"; SECTION_MODE="$2"; shift 2 ;;
     --timespy-key) need_value "$@"; TIMESPY_KEY="$2"; shift 2 ;;
     --portroyal-key) need_value "$@"; PORTROYAL_KEY="$2"; shift 2 ;;
@@ -357,6 +371,54 @@ discover_local_key() {
   return 1
 }
 
+# Locate the Time Spy / Night Raid compat patch shipped next to this script
+compat_patcher() {
+  printf '%s/patch_3dmark_compat.sh' "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+}
+
+# Apply (or verify) the launcher patch that unblocks Time Spy / Night Raid.
+# Never fatal: key registration must still succeed if the patch cannot run.
+apply_compat_patch() {
+  local script args=() installed=0 rc=0
+
+  script="$(compat_patcher)"
+  if [[ ! -x "$script" ]]; then
+    echo "Note: patch_3dmark_compat.sh not found; skipping Time Spy/Night Raid unlock." >&2
+    return 0
+  fi
+
+  [[ -n "$GAME_DIR" ]] && args+=(--game-dir "$GAME_DIR")
+  [[ -n "$INSTALL_TIMEOUT" ]] && args+=(--install-timeout "$INSTALL_TIMEOUT")
+
+  if "$script" --check ${args[@]+"${args[@]}"} >/dev/null 2>&1; then
+    installed=1
+  fi
+
+  if [[ $installed -eq 0 && $INSTALL -eq 0 ]]; then
+    echo "Note: 3DMark is not installed; skipping the Time Spy/Night Raid unlock."
+    echo "      Rerun with --install to download AppID $MAIN_APPID from Steam."
+    return 0
+  fi
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    if [[ $installed -eq 0 ]]; then
+      echo "[dry-run] Would ask Steam to install AppID $MAIN_APPID, then patch the launcher."
+    else
+      echo "[dry-run] Would apply (or verify) the Time Spy/Night Raid launcher patch."
+    fi
+    return 0
+  fi
+
+  if [[ $INSTALL -eq 1 ]]; then
+    args+=(--install)
+  fi
+  "$script" ${args[@]+"${args[@]}"} || rc=$?
+  if [[ $rc -ne 0 ]]; then
+    echo "Warning: 3DMark compatibility patch failed (exit $rc); key registration continues." >&2
+  fi
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -366,6 +428,11 @@ mapfile -t DETECTED < <(find_prefixes)
 if [[ $OPEN_CDKEYS_ONLY -eq 1 ]]; then
   open_cdkeys "$MAIN_APPID"
   exit 0
+fi
+
+# Unblock Time Spy / Night Raid (and install the game first if asked)
+if [[ $COMPAT_PATCH -eq 1 ]]; then
+  apply_compat_patch
 fi
 
 if [[ ${#DETECTED[@]} -eq 0 ]]; then
@@ -562,4 +629,6 @@ cat <<'EOF'
    protontricks 223850 d3dcompiler_43 d3dcompiler_47
 3. Restart 3DMark after registering. The paid key must be visible under
    HKCU\Software\UL\3DMark -> KeyCode (3DM-ICF-...).
+4. Time Spy / Night Raid need the launcher patch from patch_3dmark_compat.sh.
+   Steam's "Verify integrity of game files" undoes it; rerun the script after.
 EOF
