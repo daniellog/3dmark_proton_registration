@@ -134,14 +134,14 @@ is_real_key() {
   case "$k" in
     *XXXX*|*xxxx*|*YOUR*|*your*|STEAM-ENTITLEMENT|CDKEY|KEYCODE) return 1 ;;
   esac
-  [[ "$k" =~ ^3DM-[A-Za-z0-9]{2,3}(-[A-Za-z0-9]{4}){4}$ ]] && return 0
-  [[ "$k" =~ ^[A-Za-z0-9]{4,6}(-[A-Za-z0-9]{4,6}){3,5}$ ]] && return 0
+  [[ "$k" =~ ^3DM-[A-Za-z0-9]{2,4}(-[A-Za-z0-9]{4,6}){3,5}$ ]] && return 0
+  [[ "$k" =~ ^[A-Za-z0-9]{4,6}(-[A-Za-z0-9]{4,6}){3,6}$ ]] && return 0
   return 1
 }
 
 # Extract all 3DM-* keys from arbitrary text (Steam dialogs, vdf files, ...)
 extract_3dm_keys() {
-  grep -oE '3DM-[A-Za-z0-9]{2,3}(-[A-Za-z0-9]{4}){4}' <<<"$1" 2>/dev/null || true
+  grep -oE '3DM-[A-Za-z0-9]{2,4}(-[A-Za-z0-9]{4,6}){3,5}' <<<"$1" 2>/dev/null || true
 }
 
 # Extract the primary Advanced key (skip DLC keys and placeholders)

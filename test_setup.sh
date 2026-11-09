@@ -22,6 +22,7 @@ FM='Software\\Futuremark\\3DMark'
 
 KEY1='3DM-ICF-AB12-CD34-EF56-7890'
 KEY2='3DM-ICF-ZZ99-YY88-XX77-6655'
+KEY5='3DM-ICF-ABCDE-FGHIJ-KLMNO-PQRST'
 SPY='3DM-SPY-1111-2222-3333-4444'
 PR='3DM-PR-5555-6666-7777-8888'
 
@@ -221,5 +222,26 @@ grep -Fq '"d3dcompiler_43"="native,builtin"' "$P/user.reg" || fail "16: unrelate
 grep -Fq '"USERNAME"="steamuser"' "$P/user.reg" || fail "16: unrelated section lost"
 [[ "$(reg_count "$P/user.reg" 'Software\\Wine\\DllOverrides' KeyCode)" -eq 0 ]] || fail "16: key leaked into other section"
 pass "16: unrelated registry content preserved"
+
+# ---------------------------------------------------------------------------
+# Test 17: real Steam key shape (5-char groups) is accepted
+# ---------------------------------------------------------------------------
+P="$TMP_DIR/t17"; new_prefix "$P"
+out=$(run -p "$P" -k "$KEY5")
+[[ "$(reg_get "$P/user.reg" "$UL" KeyCode)" == "$KEY5" ]] || fail "17: 5-char-group key not written"
+[[ "$out" != *"does not look like"* ]] || fail "17: 5-char-group key rejected as invalid"
+pass "17: 3DM-ICF-#####-#####-#####-##### key accepted"
+
+# ---------------------------------------------------------------------------
+# Test 18: clipboard bridge extracts a 5-char-group key from mixed text
+# ---------------------------------------------------------------------------
+P="$TMP_DIR/t18"; new_prefix "$P"
+CLIP_STUB="$TMP_DIR/clipbin"; mkdir -p "$CLIP_STUB"
+printf '#!/bin/sh\nprintf "%%s" "3DMark Advanced Edition: %s"\n' "$KEY5" > "$CLIP_STUB/wl-paste"
+chmod +x "$CLIP_STUB/wl-paste"
+out=$(PATH="$CLIP_STUB:$PATH" WAYLAND_DISPLAY=wayland-1 "$SETUP" -p "$P" --clipboard 2>&1)
+[[ "$(reg_get "$P/user.reg" "$UL" KeyCode)" == "$KEY5" ]] || fail "18: clipboard key not applied"
+[[ "$out" != *"$KEY5"* ]] || fail "18: clipboard key not masked"
+pass "18: --clipboard parses key out of surrounding text"
 
 echo "All tests passed successfully."

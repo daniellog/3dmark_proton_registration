@@ -16,7 +16,7 @@ Modern 3DMark (UL) reads the paid key from:
 
 ```text
 [HKEY_CURRENT_USER\Software\UL\3DMark]
-"KeyCode"="3DM-ICF-XXXX-XXXX-XXXX-XXXX"
+"KeyCode"="3DM-ICF-XXXXX-XXXXX-XXXXX-XXXXX"
 ```
 
 Older builds and a few tests still read the legacy section:
@@ -52,6 +52,8 @@ So extraction is a **clipboard bridge**: the script opens Steam's CD keys dialog
 2. Launch 3DMark at least once through Proton so Steam generates the Wine prefix (`compatdata/223850/pfx`).
 3. Own the paid edition. The key is visible in Steam under **3DMark -> Manage -> CD keys**.
 
+Real Steam keys are shaped like `3DM-ICF-#####-#####-#####-#####` (5-character groups); older keys use 4-character groups. The script accepts 4-6 character groups.
+
 On Wayland install `wl-clipboard` (`wl-paste`); on X11 install `xclip` or `xsel`.
 
 ---
@@ -81,7 +83,7 @@ pbpaste | ./setup_3dmark.sh -k -
 
 ### 3. Apply Key via Command Line
 ```bash
-./setup_3dmark.sh -k "3DM-ICF-XXXX-XXXX-XXXX-XXXX"
+./setup_3dmark.sh -k "3DM-ICF-XXXXX-XXXXX-XXXXX-XXXXX"
 ```
 
 ### 4. Interactive Mode
@@ -109,8 +111,8 @@ Show detected prefixes and planned writes without touching files:
 
 # Include DLC keys (UL section only)
 ./setup_3dmark.sh --from-steam \
-  --timespy-key "3DM-SPY-XXXX-XXXX-XXXX-XXXX" \
-  --portroyal-key "3DM-PR-XXXX-XXXX-XXXX-XXXX"
+  --timespy-key "3DM-SPY-XXXXX-XXXXX-XXXXX-XXXXX" \
+  --portroyal-key "3DM-PR-XXXXX-XXXXX-XXXXX-XXXXX"
 
 # Show the full key instead of the masked form
 ./setup_3dmark.sh -k "KEY" --show-key --dry-run
