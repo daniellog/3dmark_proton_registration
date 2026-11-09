@@ -44,6 +44,7 @@ So extraction is a **clipboard bridge**: the script opens Steam's CD keys dialog
 - **Safe & idempotent**: Backs up `user.reg.bak`, replaces values in place without duplicating sections, verifies every write, and skips files already holding the same values.
 - **Secrets hygiene**: Keys are masked in output unless `--show-key` is passed.
 - **Includes Known Proton Fixes**: Documents launch parameter workarounds (`--use-gl=osmesa`) and DirectX shader compiler requirements (`d3dcompiler_43`, `d3dcompiler_47`).
+- **Time Spy / Night Raid unlocker**: `patch_3dmark_compat.sh` removes the launcher's bogus SSSE3 compatibility gate (SystemInfo cannot report CPU instruction sets under Wine) with a byte-identical, revertible backup.
 
 ---
 
@@ -167,14 +168,61 @@ Certain benchmarks (Time Spy, Fire Strike) require native DirectX shader compile
 - Fully exit 3DMark and Steam's game process, then relaunch. Proton reads `user.reg` at prefix startup.
 - Restore `user.reg.bak` and rerun if a write was interrupted.
 
+### 4. "Your CPU does not support SSSE 3" (Time Spy, Night Raid)
+
+3DMark's Futuremark SystemInfo scanner (`FMSIScan.exe`, a 32-bit helper) never emits its
+`<Processor_Instruction_Sets>` block under Wine/Proton. The launcher therefore believes the
+CPU has no SSSE3/SSE4.1 support and blocks every test that requires it, even though the CPU
+does support those instructions (check with `grep -o ssse3 /proc/cpuinfo`).
+
+Confirmed symptom in the generated report:
+
+```bash
+P=~/.local/share/Steam/steamapps/compatdata/223850/pfx
+grep -c Processor_Instruction_Sets \
+  "$P/drive_c/ProgramData/UL/3DMark/tmp/"fm-si-*.xml   # -> 0 on every scan
+```
+
+The `--systeminfo=off` launch option and `INCLUDE_UNSUPPORTED_TESTS` setting do **not** help:
+they only hide/display the tests, the compatibility gate still blocks them.
+
+**Fix**: disable the single launcher check that converts the missing report into a blocking
+problem (the CPU really can run the tests):
+
+```bash
+./patch_3dmark_compat.sh            # patch (idempotent)
+./patch_3dmark_compat.sh --dry-run  # just show what would happen
+./patch_3dmark_compat.sh --revert   # restore the pristine launcher
+```
+
+The script backs up the stock launcher to `bin/x64/choros.jar.orig`, then rewrites only
+`com/futuremark/choros/service/ProductStateServiceImpl.class`, replacing
+`checkCpusForInstructionsSetRequirement(...)` with a plain `return`. Everything else in the
+jar is untouched. Use `-g /path/to/3DMark` if the install is outside the usual Steam
+libraries.
+
+Notes:
+- Steam's "Verify integrity of game files" (or any game update) will restore the stock jar;
+  just rerun the script afterwards.
+- This is an unsupported client-side workaround. UL treats native Linux/Proton as
+  unsupported, so online result validation may still fail even though the benchmark runs and
+  scores locally.
+
 ---
 
 ## Verification / Running Tests
-A self-contained test script exercises registry parsing, insertion, updates, section selection, dry-run, stdin input, masking, and rejection of Steam markers against temporary prefixes:
+
+Registry/prefix handling (no game installation required):
 ```bash
 ./test_setup.sh
 ```
-Expected output:
+
+Launcher patch (builds a synthetic `choros.jar`, no game installation required):
+```bash
+./test_patch_compat.sh
+```
+
+Expected output for both:
 ```text
 All tests passed successfully.
 ```
